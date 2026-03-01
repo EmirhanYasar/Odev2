@@ -10,56 +10,56 @@ import matplotlib.pyplot as plt
 # ------------------------
 # PARAMETRELER
 # ------------------------
-fs = 8000  # Örnekleme frekansı
-tone_duration = 0.04  # Her karakterin sesi 40 ms sürecek
-silence_duration = 0.01  # Sessizlik süresi (10 ms)
-min_power_threshold = 10  # Eşik değeri (daha düşük olanlar yok sayılacak)
+fs = 8000
+tone_duration = 0.05
+silence_duration = 0.02
+min_power_threshold = 50
 
 # ------------------------
-# FREKANSLAR
+# YENİ FREKANSLAR (6x5 = 30)
 # ------------------------
-low_freqs = [697, 770, 852, 941]   # Düşük frekanslar
-high_freqs = [1209, 1336, 1477, 1633]  # Yüksek frekanslar
+low_freqs = [600, 697, 770, 852, 941, 1020]
+high_freqs = [1100, 1209, 1336, 1477, 1633]
 
-# Türk alfabesi ve boşluk karakteri
 characters = [
-    'A', 'B', 'C', 'Ç', 'D', 'E', 'F', 'G', 'Ğ', 'H', 'I', 'İ', 'J', 'K', 'L', 'M', 'N', 'O', 'Ö', 'P', 'R', 'S', 'Ş', 'T', 'U', 'Ü', 'V', 'Y', 'Z', ' '
+    'A', 'B', 'C', 'Ç', 'D',
+    'E', 'F', 'G', 'Ğ', 'H',
+    'I', 'İ', 'J', 'K', 'L',
+    'M', 'N', 'O', 'Ö', 'P',
+    'R', 'S', 'Ş', 'T', 'U',
+    'Ü', 'V', 'Y', 'Z', ' '
 ]
 
-# Frekans eşlemeleri
+# Frekans eşleme
 freq_map = {}
 index = 0
-
-# Frekans çifti oluşturuluyor
 for f1 in low_freqs:
     for f2 in high_freqs:
-        if index < len(characters):  # Eğer index 30'u geçmiyorsa
+        if index < len(characters):
             freq_map[characters[index]] = (f1, f2)
             index += 1
 
-# Frekans çiftlerine karşılık gelen karakterlerin ters eşlemesi
 reverse_map = {v: k for k, v in freq_map.items()}
 
 # ------------------------
-# ENCODE (Sinyal Sentezleme)
+# ENCODE
 # ------------------------
 def encode(text):
-    signal = np.array([])  # Başlangıçta boş bir dizi oluşturuluyor
-    t = np.linspace(0, tone_duration, int(fs * tone_duration), endpoint=False)  # Zaman dizisi (30-50 ms arası)
-    silence = np.zeros(int(fs * silence_duration))  # Sessizlik dizisi
+    signal = np.array([])
+    t = np.linspace(0, tone_duration, int(fs * tone_duration), endpoint=False)
+    silence = np.zeros(int(fs * silence_duration))
 
-    # Metindeki her karakteri dönüştür
     for char in text:
         if char not in freq_map:
             continue
-        f1, f2 = freq_map[char]  # Karaktere karşılık gelen frekansları al
-        tone = np.sin(2 * np.pi * f1 * t) + np.sin(2 * np.pi * f2 * t)  # Sinyali oluştur
-        signal = np.concatenate((signal, tone, silence))  # Sinyali ve sessizliği birleştir
+        f1, f2 = freq_map[char]
+        tone = np.sin(2 * np.pi * f1 * t) + np.sin(2 * np.pi * f2 * t)
+        signal = np.concatenate((signal, tone, silence))
 
     return signal
 
 # ------------------------
-# GOERTZEL (Frekans Algoritması)
+# GOERTZEL
 # ------------------------
 def goertzel(samples, freq):
     N = len(samples)
@@ -80,7 +80,7 @@ def goertzel(samples, freq):
     return real**2 + imag**2
 
 # ------------------------
-# DECODE (Çözümleme)
+# DECODE (GELİŞTİRİLMİŞ)
 # ------------------------
 def decode(filename):
     signal, _ = sf.read(filename)
@@ -92,95 +92,77 @@ def decode(filename):
     while i + step <= len(signal):
         window = signal[i:i+step]
 
-        max_power = 0
-        best_pair = None
+        # En güçlü düşük frekans
+        low_powers = [(f, goertzel(window, f)) for f in low_freqs]
+        best_low = max(low_powers, key=lambda x: x[1])
 
-        # Frekans çiftlerinin tespiti
-        for f1 in low_freqs:
-            for f2 in high_freqs:
-                power = goertzel(window, f1) + goertzel(window, f2)
-                if power > max_power and power > min_power_threshold:
-                    max_power = power
-                    best_pair = (f1, f2)
+        # En güçlü yüksek frekans
+        high_powers = [(f, goertzel(window, f)) for f in high_freqs]
+        best_high = max(high_powers, key=lambda x: x[1])
 
-        if best_pair in reverse_map:
-            text += reverse_map[best_pair]
+        if best_low[1] > min_power_threshold and best_high[1] > min_power_threshold:
+            pair = (best_low[0], best_high[0])
+            if pair in reverse_map:
+                text += reverse_map[pair]
 
         i += step + silence_step
 
     return text
 
 # ------------------------
-# SESİ ÇALMA FONKSİYONU
+# SES ÇALMA
 # ------------------------
 def play_audio(filename):
-    data, fs = sf.read(filename)  # Ses dosyasını oku
-    sd.play(data, fs)  # Ses dosyasını çal
-    sd.wait()  # Sesin tamamlanmasını bekle
+    data, fs_local = sf.read(filename)
+    sd.play(data, fs_local)
+    sd.wait()
 
 # ------------------------
-# Gelişmiş Tkinter Arayüzü
+# GUI
 # ------------------------
-
 def on_submit():
-    user_text = text_input.get("1.0", "end-1c").upper()  # Kullanıcının girdiği metni al
+    user_text = text_input.get("1.0", "end-1c").upper()
+
     if not user_text:
-        messagebox.showerror("Hata", "Lütfen bir metin girin!")
+        messagebox.showerror("Hata", "Lütfen metin girin!")
         return
 
-    # Encoding (Metni ses dosyasına dönüştür)
     audio = encode(user_text)
     filename = "dtmf_output.wav"
-    
-    # Dosyanın var olup olmadığını kontrol et
+
     if os.path.exists(filename):
-        os.remove(filename)  # Eğer dosya varsa, sil
-        time.sleep(0.5)  # Dosyanın silinmesi için bekle
+        os.remove(filename)
+        time.sleep(0.3)
 
-    sf.write(filename, audio, fs)  # Ses dosyasını kaydet
-    messagebox.showinfo("Başarılı", f"Ses dosyası oluşturuldu: {filename}")
+    sf.write(filename, audio, fs)
 
-    # Ses dosyasını çal
     play_audio(filename)
 
-    # Decoding (Çözümleme)
     decoded_text = decode(filename)
     result_label.config(text=f"Çözülen Metin: {decoded_text}")
 
-    # Sinyal Grafiği Çizme (Zaman Domaini)
-    plt.figure(figsize=(10, 6))
-    time_axis = np.linspace(0, len(audio) / fs, len(audio))  # Zaman eksenini oluştur
+    plt.figure(figsize=(10, 4))
+    time_axis = np.linspace(0, len(audio)/fs, len(audio))
     plt.plot(time_axis, audio)
-    plt.title("DTMF Sinyali Zaman-Domain Grafiği")
+    plt.title("DTMF Sinyali")
     plt.xlabel("Zaman (s)")
     plt.ylabel("Genlik")
-    plt.grid(True)
+    plt.grid()
     plt.show()
 
-# Tkinter arayüzü oluşturma
 root = tk.Tk()
-root.title("DTMF Encoder/Decoder")
+root.title("DTMF 30 Harf Encoder/Decoder")
 root.geometry("600x500")
 
-# Başlık
-label = tk.Label(root, text="DTMF Metin Encoder/Decoder", font=("Helvetica", 16))
-label.pack(pady=10)
+tk.Label(root, text="DTMF Metin Encoder/Decoder", font=("Helvetica", 16)).pack(pady=10)
+tk.Label(root, text="Metninizi girin", font=("Helvetica", 12)).pack(pady=5)
 
-# Kullanıcı metni girmesi için etiket
-label2 = tk.Label(root, text="Metninizi buraya girin", font=("Helvetica", 12))
-label2.pack(pady=10)
-
-# Çok satırlı metin kutusu (scrollable)
 text_input = tk.Text(root, height=6, width=50)
 text_input.pack(pady=10)
 
-# Gönder Butonu
-submit_button = tk.Button(root, text="Gönder", command=on_submit, font=("Helvetica", 12))
-submit_button.pack(pady=20)
+tk.Button(root, text="Gönder", command=on_submit, font=("Helvetica", 12)).pack(pady=15)
 
-# Çözülen metin etiketi
 result_label = tk.Label(root, text="Çözülen Metin: ", font=("Helvetica", 12))
 result_label.pack(pady=10)
 
-# GUI arayüzünü çalıştır
 root.mainloop()
