@@ -16,7 +16,7 @@ silence_duration = 0.02
 min_power_threshold = 50
 
 # ------------------------
-# YENİ FREKANSLAR (6x5 = 30)
+# 30 HARF İÇİN FREKANSLAR (6x5)
 # ------------------------
 low_freqs = [600, 697, 770, 852, 941, 1020]
 high_freqs = [1100, 1209, 1336, 1477, 1633]
@@ -42,7 +42,7 @@ for f1 in low_freqs:
 reverse_map = {v: k for k, v in freq_map.items()}
 
 # ------------------------
-# ENCODE
+# ENCODE (METNİ SİNYALE ÇEVİRME)
 # ------------------------
 def encode(text):
     signal = np.array([])
@@ -59,7 +59,7 @@ def encode(text):
     return signal
 
 # ------------------------
-# GOERTZEL
+# GOERTZEL ALGORİTMASI
 # ------------------------
 def goertzel(samples, freq):
     N = len(samples)
@@ -80,7 +80,7 @@ def goertzel(samples, freq):
     return real**2 + imag**2
 
 # ------------------------
-# DECODE (GELİŞTİRİLMİŞ)
+# DECODE (SİNYALİ HARFE ÇEVİRME)
 # ------------------------
 def decode(filename):
     signal, _ = sf.read(filename)
@@ -92,11 +92,13 @@ def decode(filename):
     while i + step <= len(signal):
         window = signal[i:i+step]
 
-        # En güçlü düşük frekans
+        # -------- Hamming Pencereleme --------
+        window = window * np.hamming(len(window))
+
+        # -------- Goertzel ile frekans tespiti --------
         low_powers = [(f, goertzel(window, f)) for f in low_freqs]
         best_low = max(low_powers, key=lambda x: x[1])
 
-        # En güçlü yüksek frekans
         high_powers = [(f, goertzel(window, f)) for f in high_freqs]
         best_high = max(high_powers, key=lambda x: x[1])
 
@@ -110,7 +112,7 @@ def decode(filename):
     return text
 
 # ------------------------
-# SES ÇALMA
+# SESİ ÇALMA
 # ------------------------
 def play_audio(filename):
     data, fs_local = sf.read(filename)
@@ -118,7 +120,7 @@ def play_audio(filename):
     sd.wait()
 
 # ------------------------
-# GUI
+# TKINTER GUI
 # ------------------------
 def on_submit():
     user_text = text_input.get("1.0", "end-1c").upper()
@@ -141,15 +143,19 @@ def on_submit():
     decoded_text = decode(filename)
     result_label.config(text=f"Çözülen Metin: {decoded_text}")
 
+    # -------- Zaman-Domain Grafiği --------
     plt.figure(figsize=(10, 4))
     time_axis = np.linspace(0, len(audio)/fs, len(audio))
     plt.plot(time_axis, audio)
-    plt.title("DTMF Sinyali")
+    plt.title("DTMF Sinyali (Zaman Domain)")
     plt.xlabel("Zaman (s)")
     plt.ylabel("Genlik")
     plt.grid()
     plt.show()
 
+# ------------------------
+# GUI ELEMENTLERİ
+# ------------------------
 root = tk.Tk()
 root.title("DTMF 30 Harf Encoder/Decoder")
 root.geometry("600x500")
